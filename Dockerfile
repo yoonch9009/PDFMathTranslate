@@ -4,15 +4,10 @@ WORKDIR /app
 EXPOSE 7860
 ENV PYTHONUNBUFFERED=1
 
-# 환경 변수 설정
-ENV CFLAGS="-march=x86-64 -mtune=generic -O2"
-ENV CXXFLAGS="-march=x86-64 -mtune=generic -O2"
-
-# OpenSSL 개발 패키지 포함하여 설치
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
     libgl1 libglib2.0-0 libxext6 libsm6 libxrender1 \
-    build-essential libssl-dev && \
+    build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
