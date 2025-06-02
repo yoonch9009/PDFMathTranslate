@@ -6,6 +6,7 @@ import typing
 import uuid
 from pathlib import Path
 from string import Template
+import os
 
 import gradio as gr
 import requests
@@ -213,7 +214,7 @@ for display_name, code in lang_map.items():
         default_lang_to = display_name
         break
 else:
-    default_lang_to = "Simplified Chinese"  # Fallback
+    default_lang_to = "Korean"  # Fallback
 
 # Available translation services
 # This will eventually be dynamically determined based on available translators
@@ -438,6 +439,7 @@ def _build_translate_settings(
     metadata = TRANSLATION_ENGINE_METADATA_MAP[service]
     cli_flag = metadata.cli_flag_name
     setattr(translate_settings, cli_flag, True)
+    
     if metadata.cli_detail_field_name:
         detail_setting = getattr(translate_settings, metadata.cli_detail_field_name)
         if metadata.setting_model_type:
@@ -449,21 +451,40 @@ def _build_translate_settings(
                         continue
                     if field_name in GUI_SENSITIVE_FIELDS:
                         continue
-                value = ui_inputs.get(field_name)
+                
+                # UI에서 입력받은 값
+                ui_value = ui_inputs.get(field_name)
+                
+                # 환경 변수에서 값 가져오기
+                env_key = f"{metadata.translate_engine_type.upper()}_{field_name.upper()}"
+                env_value = os.environ.get(env_key)
+                
+                # 값 결정 로직
+                if ui_value and str(ui_value).strip():  # UI 입력값이 있으면 우선 사용
+                    value = ui_value
+                elif env_value is not None:  # UI 입력값이 없으면 환경 변수 사용
+                    value = env_value
+                else:  # 둘 다 없으면 기존 설정값 사용
+                    value = getattr(detail_setting, field_name)
+                
+                # 타입 변환
                 type_hint = detail_setting.model_fields[field_name].annotation
                 original_type = typing.get_origin(type_hint)
                 type_args = typing.get_args(type_hint)
+                
                 if type_hint is str or str in type_args:
                     pass
                 elif type_hint is int or int in type_args:
-                    value = int(value)
+                    value = int(value) if value else None
                 elif type_hint is bool or bool in type_args:
-                    value = bool(value)
+                    value = bool(value) if value else False
                 else:
                     raise Exception(
                         f"Unsupported type {type_hint} for field {field_name} in gui translation engine settings"
                     )
-                setattr(detail_setting, field_name, value)
+                
+                if value is not None:
+                    setattr(detail_setting, field_name, value)
 
     # Add custom prompt if provided
     if prompt:
@@ -887,10 +908,26 @@ with gr.Blocks(
 
                             if field_name == "translate_engine_type":
                                 continue
+                            
                             type_hint = field.annotation
                             original_type = typing.get_origin(type_hint)
                             type_args = typing.get_args(type_hint)
-                            value = getattr(detail_settings, field_name)
+                            
+                            # 환경 변수에서 값 가져오기 (서비스명_필드명 형식)
+                            env_key = f"{metadata.translate_engine_type.upper()}_{field_name.upper()}"
+                            env_value = os.environ.get(env_key)
+                            
+                            # 기본값 설정 로직
+                            if env_value is not None and field_name not in GUI_PASSWORD_FIELDS:
+                                # 환경 변수가 있고 패스워드 필드가 아닌 경우 환경 변수 값 사용
+                                value = env_value
+                            elif field_name in GUI_PASSWORD_FIELDS:
+                                # 패스워드 필드는 항상 빈값으로 표시
+                                value = ""
+                            else:
+                                # 환경 변수가 없으면 기존 설정값 사용
+                                value = getattr(detail_settings, field_name)
+                            
                             if (
                                 type_hint is str
                                 or str in type_args
@@ -900,10 +937,11 @@ with gr.Blocks(
                                 if field_name in GUI_PASSWORD_FIELDS:
                                     field_input = gr.Textbox(
                                         label=field.description,
-                                        value=value,
+                                        value="",  # 패스워드는 항상 빈값
                                         interactive=True,
                                         type="password",
                                         visible=visible,
+                                        placeholder="Enter API key (required)"
                                     )
                                 else:
                                     field_input = gr.Textbox(
