@@ -288,14 +288,38 @@ def translate_file(
 
     _envs = {}
     for i, env in enumerate(translator.envs.items()):
-        _envs[env[0]] = envs[i]
-    for k, v in _envs.items():
-        if str(k).upper().endswith("API_KEY") and str(v) == "***":
-            # Load Real API_KEYs from local configure file
-            real_keys: str = ConfigManager.get_env_by_translatername(
-                translator, k, None
-            )
-            _envs[k] = real_keys
+        env_key = env[0]
+        ui_value = envs[i]
+        
+        # API 키 처리 로직 수정
+        if str(env_key).upper().endswith("API_KEY"):
+            # UI 입력값이 비어있으면 시스템 환경변수에서 가져옴
+            if not ui_value or ui_value == "":
+                # 먼저 OS 환경변수 확인
+                system_value = os.environ.get(env_key, "")
+                if system_value:
+                    _envs[env_key] = system_value
+                else:
+                    # OS 환경변수가 없으면 ConfigManager에서 가져옴
+                    _envs[env_key] = ConfigManager.get_env_by_translatername(
+                        translator, env_key, ""
+                    )
+            else:
+                # UI에 입력값이 있으면 그것을 사용
+                _envs[env_key] = ui_value
+        else:
+            # API_KEY가 아닌 경우 UI 값 우선 사용
+            if ui_value:
+                _envs[env_key] = ui_value
+            else:
+                # UI 값이 없으면 시스템 환경변수 -> ConfigManager 순으로 확인
+                system_value = os.environ.get(env_key, "")
+                if system_value:
+                    _envs[env_key] = system_value
+                else:
+                    _envs[env_key] = ConfigManager.get_env_by_translatername(
+                        translator, env_key, env[1]
+                    )
 
     print(f"Files before translation: {os.listdir(output)}")
 
@@ -575,7 +599,7 @@ with gr.Blocks(
                 lang_to = gr.Dropdown(
                     label="Translate to",
                     choices=lang_map.keys(),
-                    value=ConfigManager.get("PDF2ZH_LANG_TO", "Simplified Chinese"),
+                    value=ConfigManager.get("PDF2ZH_LANG_TO", "Korean"),  # 기본값을 한국어로 변경
                 )
             page_range = gr.Radio(
                 choices=page_map.keys(),
@@ -620,20 +644,30 @@ with gr.Blocks(
                     _envs.append(gr.update(visible=False, value=""))
                 for i, env in enumerate(translator.envs.items()):
                     label = env[0]
-                    value = ConfigManager.get_env_by_translatername(
-                        translator, env[0], env[1]
-                    )
+                    
+                    # API_KEY는 항상 빈칸으로 표시
+                    if str(label).upper().endswith("API_KEY"):
+                        value = ""  # API 키는 항상 빈칸으로 표시
+                    else:
+                        # MODEL, URL 등은 시스템 환경변수 우선, 없으면 ConfigManager 값 사용
+                        system_value = os.environ.get(label, "")
+                        if system_value:
+                            value = system_value
+                        else:
+                            value = ConfigManager.get_env_by_translatername(
+                                translator, label, env[1]
+                            )
+                    
                     visible = True
                     if hidden_gradio_details:
                         if (
                             "MODEL" not in str(label).upper()
                             and value
                             and hidden_gradio_details
+                            and not str(label).upper().endswith("API_KEY")
                         ):
                             visible = False
-                        # Hidden Keys From Gradio
-                        if "API_KEY" in label.upper():
-                            value = "***"  # We use "***" Present Real API_KEY
+                    
                     _envs[i] = gr.update(
                         visible=visible,
                         label=label,
