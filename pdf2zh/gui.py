@@ -616,7 +616,7 @@ with gr.Blocks(
             with gr.Accordion("Open for More Experimental Options!", open=False):
                 gr.Markdown("#### Experimental")
                 threads = gr.Textbox(
-                    label="number of threads", interactive=True, value="4"
+                    label="number of threads", interactive=True, value="16"
                 )
                 skip_subset_fonts = gr.Checkbox(
                     label="Skip font subsetting", interactive=True, value=False
